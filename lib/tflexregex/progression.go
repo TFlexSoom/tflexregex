@@ -24,6 +24,16 @@ func (crp *Progression) setTransition(index uint, nextState uint) {
 	(*crp).binaryTreeOfSets[index][nextState] = true
 }
 
+func treeIndexToRange(index uint) (byte, byte) {
+	left := index
+	for ; left < 255; left = (left << 1) + 1 {
+	}
+	right := index
+	for ; right < 255; right = (right << 1) + 2 {
+	}
+	return byte(left - 255), byte(right - 255)
+}
+
 func (crp *Progression) TransitionOnCharacter(charVal byte, nextState uint) {
 	crp.setTransition(uint(charVal)+255, nextState)
 }
@@ -38,33 +48,37 @@ func (crp *Progression) TransitionOnRange(greaterToOrEqual byte, lessThanOrEqual
 		crp.setTransition(0, nextState)
 	}
 
-	upperBits := byte(0)
-	iter := byte(0b1000_0000)
-	for ; iter > 0; iter = iter >> 1 {
+	treeIndex := uint(0)
+
+	for iter := byte(0b1000_0000); iter > 0; iter = iter >> 1 {
 		left := greaterToOrEqual & iter
 		right := lessThanOrEqual & iter
+		one_zero := uint(0)
+		if left > 1 {
+			one_zero = 1
+		}
 
 		if left != right {
 			break
 		} else {
-			upperBits += left
+			treeIndex = (treeIndex << 1) + one_zero
 		}
 	}
 
-	lowerBits := (iter << 1) - 1
-	queue := make([]byte, 0, 256)
-	queue = append(queue, lowerBits)
-	for ; len(queue) > 0; iter = queue[0] {
-		lowest := upperBits
-		highest := upperBits + lowerBits
+	queue := make([]uint, 0, 256)
+	queue = append(queue, treeIndex)
+	for ; len(queue) > 0; treeIndex = popQueue(&queue) {
+		lowest, highest := treeIndexToRange(treeIndex)
 		if greaterToOrEqual <= lowest && lessThanOrEqual >= highest {
-			crp.setTransition( /* TODO */ 0, nextState)
+			crp.setTransition(treeIndex, nextState)
 		} else if greaterToOrEqual <= lowest {
-			queue = append(queue, index) // TODO
+			queue = append(queue, (treeIndex<<1)+1)
 		} else if lessThanOrEqual >= highest {
-			queue = append(queue, index) // TODO
+			queue = append(queue, (treeIndex<<1)+2)
 		}
 	}
+
+	return nil
 }
 
 func (crp *Progression) GetTransitions(actual byte) []uint {
