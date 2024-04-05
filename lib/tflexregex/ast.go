@@ -1,76 +1,65 @@
 package tflexregex
 
+import "errors"
+
 type ast struct {
-	root      uint
-	elem      []elem
-	relations map[uint]uint
+	elems    []elem
+	parentOf map[uint][]uint
+	childOf  map[uint]uint
 }
 
 const (
 	codeNone byte = iota
+	codeEscapeLiteral
+	codeDot
+	codeDecimal
 	codeLiteral
 	codeClass
-	codeDot
-	codeUnion
-	codeSub
+	codeEscape
+	codeTerm
+	codeModifier
+	codeParPattern
+	codePattern
+	codeModified
+	codeExpression
+	codeRegex
 )
 
 type elem struct {
 	code    byte
-	lte     uint
-	gte     uint
-	content []rune
-}
-
-func newLiteralElem(v rune) elem {
-	return elem{
-		code:    codeLiteral,
-		lte:     1,
-		gte:     1,
-		content: []rune{v},
-	}
-}
-
-func newClassElem(runes []rune) elem {
-	return elem{
-		code:    codeClass,
-		lte:     1,
-		gte:     1,
-		content: runes,
-	}
-}
-
-func newDotElem() elem {
-	return elem{
-		code:    codeDot,
-		lte:     1,
-		gte:     1,
-		content: []rune{},
-	}
-}
-
-func newUnionElem() elem {
-	return elem{
-		code:    codeUnion,
-		lte:     1,
-		gte:     1,
-		content: []rune{},
-	}
-}
-
-func newSubElem(subRef uint) elem {
-	return elem{
-		code:    codeSub,
-		lte:     1,
-		gte:     1,
-		content: []rune{},
-	}
+	content []byte
 }
 
 func newAst() ast {
 	return ast{
-		root:      0,
-		elem:      make([]elem, 0, 256),
-		relations: make(map[uint]uint, 256),
+		elems:    make([]elem, 1, 256),
+		parentOf: make(map[uint][]uint, 256),
+		childOf:  make(map[uint]uint, 256),
 	}
+}
+
+func makeRoot(tree ast, code byte, content []byte) ast {
+	tree.elems[0] = elem{
+		code:    code,
+		content: content,
+	}
+
+	return tree
+}
+
+func addChild(tree ast, parent uint, code byte, content []byte) (ast, error) {
+	length := uint(len(tree.elems))
+	if parent >= length {
+		return tree, errors.New("invalid parent index")
+	}
+
+	tree.elems = append(tree.elems, elem{
+		code:    code,
+		content: content,
+	})
+
+	tree.parentOf[parent] = append(tree.parentOf[parent], length)
+	tree.parentOf[length] = make([]uint, 0, 8)
+	tree.childOf[length] = parent
+	return tree, nil
 }
