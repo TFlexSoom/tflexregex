@@ -3,6 +3,8 @@ package tflexregex
 import (
 	"errors"
 	"fmt"
+
+	tree "github.com/tflexsoom/go-tree/lib"
 )
 
 /*
@@ -23,8 +25,30 @@ DOT => '.'
 ESCAPE_LITERAL => '\'
 */
 
+const (
+	codeNone byte = iota
+	codeEscapeLiteral
+	codeDot
+	codeDecimal
+	codeLiteral
+	codeClass
+	codeEscape
+	codeTerm
+	codeModifier
+	codeParPattern
+	codePattern
+	codeModified
+	codeExpression
+	codeRegex
+)
+
+type astElem struct {
+	code    byte
+	content []byte
+}
+
 type parsingMonad struct {
-	result ast
+	result tree.Tree[astElem]
 	index  uint
 	input  string
 	err    error
@@ -32,14 +56,14 @@ type parsingMonad struct {
 
 func newParsingMonad(input string) parsingMonad {
 	return parsingMonad{
-		result: newAst(),
+		result: tree.NewGraphTreeCap[astElem](16, 4),
 		index:  0,
 		input:  input,
 		err:    nil,
 	}
 }
 
-func parse(regex string) (ast, error) {
+func parse(regex string) (tree.Tree[astElem], error) {
 	pMonad := newParsingMonad(regex)
 	pMonad = root(pMonad)
 	return pMonad.result, pMonad.err
@@ -97,7 +121,11 @@ func consumeChar(pMonad parsingMonad, v byte) parsingMonad {
 }
 
 func root(pMonad parsingMonad) parsingMonad {
-	pMonad.result
+	pMonad.result.SetValue(astElem{
+		code:    codeRegex,
+		content: []byte{},
+	})
+
 	length := uint(len(pMonad.input))
 	for pMonad.index < length {
 		pMonad = mapErr(pMonad, expression)
