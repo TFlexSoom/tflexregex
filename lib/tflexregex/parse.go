@@ -10,16 +10,15 @@ import (
 /*
 REGEX GRAMMAR
 
-REGEX => EXPRESSION | EXPRESSION REGEX
-EXPRESSION => MODIFIED | MODIFIED '|' MODIFIED
-MODIFIED => PATTERN MODIFIER?
-PATTERN => '(' PAR_PATTERN ')' | TERM
-PAR_PATTERN => '(' PAR_PATTERN ')' | PAR_PATTERN '|' PAR_PATTERN | TERM+
+REGEX => EXPRESSION REGEX?
+EXPRESSION => PATTERN ('|' PATTERN)*
+PATTERN => '(' EXPRESSION ')' MODIFIER?
+		   | TERM MODIFIER?
 MODIFIER => {DECIMAL,DECIMAL} | {DECIMAL,} | {,DECIMAL} | '+' | '*'
-TERM => CLASS | LITERAL | ESCAPE | DECIMAL | DOT
+TERM => ESCAPE | CLASS | DOT | LITERAL
 ESCAPE => ESCAPE_LITERAL .
 CLASS => '[' [^]]* ']'
-LITERAL => [^123456789()'\'+*{}[\]]
+LITERAL => [^()'\'+*{}[\]]
 DECIMAL => 123456789+
 DOT => '.'
 ESCAPE_LITERAL => '\'
@@ -35,9 +34,7 @@ const (
 	codeEscape
 	codeTerm
 	codeModifier
-	codeParPattern
 	codePattern
-	codeModified
 	codeExpression
 	codeRegex
 )
@@ -48,18 +45,21 @@ type astElem struct {
 }
 
 type parsingMonad struct {
-	result tree.Tree[astElem]
-	index  uint
-	input  string
-	err    error
+	result   tree.Tree[astElem]
+	lastTree tree.Tree[astElem]
+	index    uint
+	input    string
+	err      error
 }
 
 func newParsingMonad(input string) parsingMonad {
+	tree := tree.NewGraphTreeCap[astElem](16, 4)
 	return parsingMonad{
-		result: tree.NewGraphTreeCap[astElem](16, 4),
-		index:  0,
-		input:  input,
-		err:    nil,
+		result:   tree,
+		lastTree: tree,
+		index:    0,
+		input:    input,
+		err:      nil,
 	}
 }
 
@@ -127,11 +127,8 @@ func root(pMonad parsingMonad) parsingMonad {
 	})
 
 	length := uint(len(pMonad.input))
-	for pMonad.index < length {
+	for pMonad.index < length && pMonad.err == nil {
 		pMonad = mapErr(pMonad, expression)
-		if pMonad.err != nil {
-			return pMonad
-		}
 	}
 
 	return pMonad
@@ -144,11 +141,18 @@ func expression(pMonad parsingMonad) parsingMonad {
 		return pMonad
 	}
 
+	expressionRoot := pMonad.lastTree.AddChild(astElem{
+		code:    codeExpression,
+		content: []byte{},
+	})
+	pMonad.lastTree = expressionRoot
 	pMonad = mapErr(pMonad, pattern)
 
-	if hasChar(pMonad, '|') {
+	for hasChar(pMonad, '|') && pMonad.err == nil {
 		pMonad = mapErr(pMonad, bind(consumeChar, '|'))
-		pMonad = mapErr(pMonad, expression)
+
+		pMonad.lastTree = expressionRoot
+		pMonad = mapErr(pMonad, pattern)
 	}
 
 	return pMonad
@@ -157,15 +161,103 @@ func expression(pMonad parsingMonad) parsingMonad {
 func pattern(pMonad parsingMonad) parsingMonad {
 	length := uint(len(pMonad.input))
 	if pMonad.index >= length {
-		pMonad.err = errors.New("expected expression, but end of input was reached")
+		pMonad.err = errors.New("expected pattern, but end of input was reached")
 		return pMonad
 	}
 
+	patternRoot := pMonad.lastTree.AddChild(astElem{
+		code:    codePattern,
+		content: []byte{},
+	})
+
+	pMonad.lastTree = patternRoot
 	if hasChar(pMonad, '(') {
 		pMonad = mapErr(pMonad, bind(consumeChar, '('))
-		pMonad = mapErr(pMonad, pattern)
+		pMonad = mapErr(pMonad, expression)
 		pMonad = mapErr(pMonad, bind(consumeChar, ')'))
+	} else {
+		pMonad = mapErr(pMonad, term)
+	}
+
+	pMonad.lastTree = patternRoot
+	return mapErr(pMonad, modifier)
+}
+
+// optionally added
+func modifier(pMonad parsingMonad) parsingMonad {
+	length := uint(len(pMonad.input))
+	if pMonad.index >= length {
 		return pMonad
 	}
+
+	if hasChar(pMonad, '{') {
+		// TODO
+	} else if hasChar(pMonad, '+') {
+		pMonad = mapErr(pMonad, bind(consumeChar, '+'))
+		pMonad.lastTree.AddChild(astElem{
+			code:    codeModifier,
+			content: []byte{'+'},
+		})
+	} else if hasChar(pMonad, '*') {
+		pMonad = mapErr(pMonad, bind(consumeChar, '+'))
+		pMonad.lastTree.AddChild(astElem{
+			code:    codeModifier,
+			content: []byte{'*'},
+		})
+	}
+
+	return pMonad
+}
+
+func term(pMonad parsingMonad) parsingMonad {
+	length := uint(len(pMonad.input))
+	if pMonad.index >= length {
+		pMonad.err = errors.New("expected term, but end of input was reached")
+		return pMonad
+	}
+
+	termRoot := pMonad.lastTree.AddChild(astElem{
+		code:    codeTerm,
+		content: []byte{},
+	})
+
+	pMonad.lastTree = termRoot
+
+	if hasChar(pMonad, '\\') {
+		pMonad = mapErr(pMonad, escape)
+	} else if hasChar(pMonad, '[') {
+		pMonad = mapErr(pMonad, class)
+	} else if hasChar(pMonad, '.') {
+		pMonad = mapErr(pMonad, bind(consumeChar, '.'))
+		pMonad.lastTree.AddChild(astElem{
+			code:    codeDot,
+			content: []byte{},
+		})
+	} else {
+		pMonad = mapErr(pMonad, literal)
+	}
+
+	return pMonad
+}
+
+func escape(pMonad parsingMonad) parsingMonad {
+	length := uint(len(pMonad.input))
+	if pMonad.index > length { // should be >= length + 1 because \\ should prefix another character
+		pMonad.err = errors.New("expected escape, but end of input was reached")
+		return pMonad
+	}
+
+	pMonad = mapErr(pMonad, bind(consumeChar, '\\'))
+	nextChar := pMonad.input[pMonad.index]
+	pMonad.index += 1
+	pMonad.lastTree.AddChild(astElem{
+		code:    codeEscape,
+		content: []byte{nextChar},
+	})
+
+	return pMonad
+}
+
+func class(pMonad parsingMonad) parsingMonad {
 
 }
