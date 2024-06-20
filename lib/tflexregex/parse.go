@@ -13,7 +13,9 @@ REGEX GRAMMAR
 REGEX => EXPRESSION REGEX?
 EXPRESSION => PATTERN ('|' PATTERN)*
 PATTERN => '(' EXPRESSION ')' MODIFIER?
-		   | TERM MODIFIER?
+
+	| TERM MODIFIER?
+
 MODIFIER => {DECIMAL,DECIMAL} | {DECIMAL,} | {,DECIMAL} | '+' | '*'
 TERM => ESCAPE | CLASS | DOT | LITERAL
 ESCAPE => ESCAPE_LITERAL .
@@ -23,33 +25,10 @@ DECIMAL => 123456789+
 DOT => '.'
 ESCAPE_LITERAL => '\'
 */
-
-const (
-	codeNone byte = iota
-	codeEscapeLiteral
-	codeDot
-	codeDecimal
-	codeLiteral
-	codeClass
-	codeEscape
-	codeTerm
-	codeModifier
-	codePattern
-	codeExpression
-	codeRegex
-)
-
-type astElem struct {
-	code    byte
-	content []byte
-}
-
 type parsingMonad struct {
-	result   tree.Tree[astElem]
-	lastTree tree.Tree[astElem]
-	index    uint
-	input    string
-	err      error
+	index uint
+	input string
+	err   error
 }
 
 func newParsingMonad(input string) parsingMonad {

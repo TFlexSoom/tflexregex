@@ -1,25 +1,38 @@
 package tflexregex
 
-import (
-	"errors"
-)
-
 type Regex struct {
 }
 
-func FromString(regex string) (Regex, error) {
-	builder, err := builderFrom(regex)
-	if err != nil {
-		return Regex{}, err
+type regexMatchMonad struct {
+	regex Regex
+	state uint
+}
+
+func fromRegex(regex Regex) regexMonad {
+	return regexMonad{
+		regex:  regex,
+		founds: make([]uint, 0, 16),
+	}
+}
+
+func hasFound(monad regexMonad) bool {
+	return len(monad.founds) > 0
+}
+
+func match(monad regexMonad, next byte) regexMonad {
+
+}
+
+// TODO MOVE elsewhere
+func Match(regex Regex, b []byte) bool {
+	monad := fromRegex(regex)
+	for i := 0; i < len(b); i++ {
+		monad = match(monad, b[i])
 	}
 
-	return FromBuilder(builder)
+	return hasFound(monad)
 }
 
-func FromBuilder(regex RegexBuilder) (Regex, error) {
-	return Regex{}, errors.New("not implemented")
-}
-
-func builderFrom(regex string) (RegexBuilder, error) {
-	return RegexBuilder{}, errors.New("not implemented")
+func NewInstance() Regex {
+	return Regex{}
 }
