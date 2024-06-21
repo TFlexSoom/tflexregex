@@ -21,8 +21,7 @@ type parsingMonad interface {
 	isEmpty() bool
 	has(byte) bool
 	within(byte, byte) bool
-	errorOut(string)
-	acceptOnHas(byte)
+	acceptIfHas(byte)
 	accept(byte)
 	acceptByte()
 	acceptWithin(byte, byte)
@@ -31,18 +30,23 @@ type parsingMonad interface {
 }
 
 func regex(pMonad parsingMonad) parsingMonad {
-	pMonad.acceptOnHas('^')
-	pMonad.ready(expression)
+	pMonad.acceptIfHas('^')
 	pMonad.ready(func(pm parsingMonad) parsingMonad {
-		pm.acceptOnHas('$')
+		pm.acceptIfHas('$')
 		return pm
 	})
+	pMonad.ready(expression)
+
 	return pMonad
 }
 
 func expression(pMonad parsingMonad) parsingMonad {
-	pMonad.ready(modifiedTerm)
+	if pMonad.isEmpty() || pMonad.has('$') {
+		return pMonad
+	}
+
 	pMonad.ready(postExpression)
+	pMonad.ready(modifiedTerm)
 	return pMonad
 }
 
@@ -51,8 +55,8 @@ func postExpression(pMonad parsingMonad) parsingMonad {
 		pMonad.accept('|')
 		pMonad.ready(expression)
 	} else if !pMonad.isEmpty() && !pMonad.has('$') {
-		pMonad.ready(modifiedTerm)
 		pMonad.ready(postExpression)
+		pMonad.ready(modifiedTerm)
 	}
 
 	return pMonad
@@ -61,17 +65,17 @@ func postExpression(pMonad parsingMonad) parsingMonad {
 func modifiedTerm(pMonad parsingMonad) parsingMonad {
 	if pMonad.has('(') {
 		pMonad.accept('(')
-		pMonad.ready(expression)
 		pMonad.ready(func(pm parsingMonad) parsingMonad {
 			pm.accept(')')
 			return pm
 		})
+		pMonad.ready(expression)
 
 		return pMonad
 	}
 
-	pMonad.ready(term)
 	pMonad.ready(modifier)
+	pMonad.ready(term)
 	return pMonad
 }
 
@@ -80,11 +84,12 @@ func term(pMonad parsingMonad) parsingMonad {
 		pMonad.accept('\\')
 		pMonad.acceptByte()
 	} else if pMonad.has('[') {
-		pMonad.ready(class)
 		pMonad.ready(func(pm parsingMonad) parsingMonad {
 			pm.accept(']')
 			return pm
 		})
+		pMonad.ready(class)
+
 	} else if pMonad.has('.') {
 		pMonad.accept('.')
 	} else {
@@ -111,30 +116,30 @@ func rangeModifier(pMonad parsingMonad) parsingMonad {
 	pMonad.accept('{')
 	if pMonad.has(',') {
 		pMonad.accept(',')
-		pMonad.ready(decimal)
 		pMonad.ready(func(pm parsingMonad) parsingMonad {
 			pm.accept('}')
 			return pm
 		})
+		pMonad.ready(decimal)
 
 		return pMonad
 	}
 
-	pMonad.ready(decimal)
 	pMonad.ready(func(pm parsingMonad) parsingMonad {
 		pm.accept(',')
 		if pm.has('}') {
 			pm.accept('}')
 		} else {
-			pm.ready(decimal)
 			pm.ready(func(pm_ parsingMonad) parsingMonad {
 				pm_.accept('}')
 				return pm_
 			})
+			pm.ready(decimal)
 		}
 
 		return pm
 	})
+	pMonad.ready(decimal)
 
 	return pMonad
 }
