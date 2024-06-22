@@ -1,15 +1,11 @@
 package parse
 
-import "fmt"
+type Regex struct{}
 
-type parsingOutput struct{}
+func parse(pattern string) Regex {
+	monad := fromString(pattern)
 
-func parseRegex(regex string) parsingOutput {
-	return parsingOutput{}
-}
+	monad = runUntilDone(monad)
 
-func parse(regex string) (, error) {
-	pMonad := newParsingMonad(regex)
-	pMonad = root(pMonad)
-	return pMonad.result, pMonad.err
+	return Regex{}
 }

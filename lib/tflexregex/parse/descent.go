@@ -17,19 +17,7 @@ DOT => '.'
 ESCAPE_LITERAL => '\'
 */
 
-type parsingMonad interface {
-	isEmpty() bool
-	has(byte) bool
-	within(byte, byte) bool
-	acceptIfHas(byte)
-	accept(byte)
-	acceptByte()
-	acceptWithin(byte, byte)
-	acceptUnicode()
-	ready(func(parsingMonad) parsingMonad)
-}
-
-func regex(pMonad parsingMonad) parsingMonad {
+func parseRegex(pMonad parsingMonad) parsingMonad {
 	pMonad.acceptIfHas('^')
 	pMonad.ready(func(pm parsingMonad) parsingMonad {
 		pm.acceptIfHas('$')

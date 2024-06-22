@@ -1,6 +1,7 @@
 package parse
 
 const MAX_CALLSTACK = 256
+const DEFAULT_CALLSTACK_SIZE = 32
 
 type parsingMonadString struct {
 	content   []byte
@@ -16,7 +17,7 @@ func fromString(pattern string) parsingMonad {
 		content:   bytes,
 		length:    len(bytes),
 		index:     0,
-		callstack: make([]func(parsingMonad) parsingMonad, 32),
+		callstack: make([]func(parsingMonad) parsingMonad, 0, 32),
 	}
 }
 
@@ -111,4 +112,17 @@ func (pm *parsingMonadString) ready(nextTerm func(parsingMonad) parsingMonad) {
 
 	pm.callstack = append(pm.callstack, nextTerm)
 	*pm = pmonad
+}
+
+func (pm parsingMonadString) isRunning() bool {
+	return len(pm.callstack) > 0
+}
+
+func (pm *parsingMonadString) nextFunction() func(parsingMonad) parsingMonad {
+	pMonad := *pm
+	length := len(pMonad.callstack)
+	result := pMonad.callstack[length-1]
+	pMonad.callstack = pMonad.callstack[:length-1]
+	*pm = pMonad
+	return result
 }
