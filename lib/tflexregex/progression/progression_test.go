@@ -1,4 +1,4 @@
-package tflexregex
+package progression
 
 import (
 	"slices"

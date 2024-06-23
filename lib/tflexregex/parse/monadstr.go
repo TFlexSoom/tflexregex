@@ -8,6 +8,7 @@ type parsingMonadString struct {
 	length    int
 	index     int
 	callstack [](func(parsingMonad) parsingMonad)
+	visit     visitor
 }
 
 func fromString(pattern string) parsingMonad {
@@ -102,6 +103,10 @@ func (pm *parsingMonadString) acceptUnicode() {
 	}
 
 	panic("bad unicode character")
+}
+
+func (pm *parsingMonadString) pump(nt nodeType) {
+	(*pm).visit.pump(nt)
 }
 
 func (pm *parsingMonadString) ready(nextTerm func(parsingMonad) parsingMonad) {
