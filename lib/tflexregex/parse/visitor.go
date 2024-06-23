@@ -3,19 +3,25 @@ package parse
 import (
 	"fmt"
 	"strconv"
+
+	"github.com/tflexsoom/tflexregex/lib/tflexregex/progression"
 )
 
 type visitor struct {
-	progressionRoot    progression
-	progressionCurrent progression
+	progressionRoot    progression.Progression
+	progressionCurrent progression.Progression
 	buffer             []byte
 }
 
 const maxBuffer = 32
 
 func newVisitor() visitor {
+	p := progression.NewProgression()
+
 	return visitor{
-		buffer: make([]byte, 0, maxBuffer),
+		progressionRoot:    p,
+		progressionCurrent: p,
+		buffer:             make([]byte, 0, maxBuffer),
 	}
 }
 
@@ -88,18 +94,18 @@ func (v *visitor) dropNext(next byte) {
 func (v *visitor) anchor() {
 	v.validateLength()
 	v.clearBuffer()
-	(*v).progressionRoot.anchored()
+	(*v).progressionRoot.Anchored()
 }
 
 func (v *visitor) dollar() {
 	v.validateLength()
 	v.clearBuffer()
-	(*v).progressionRoot.dollared()
+	(*v).progressionRoot.Dollared()
 }
 
 func (v *visitor) char() {
 	v.validateLength()
-	(*v).progressionCurrent.addCharFilter(v.buffer[0])
+	(*v).progressionCurrent.AddCharFilter(v.buffer[0])
 	v.clearBuffer()
 }
 
@@ -122,7 +128,7 @@ func (v *visitor) unicode() {
 	if current >= byte(0b1100_0000) {
 		r += int32(current) << 8
 		r += int32(v.buffer[currentIndex+1])
-		(*v).progressionCurrent.addRuneFilter(rune(r))
+		(*v).progressionCurrent.AddRuneFilter(rune(r))
 		v.clearBuffer()
 		return
 	}
@@ -174,13 +180,13 @@ func (v *visitor) class() {
 		runeList = append(runeList, rune(current))
 	}
 
-	(*v).progressionCurrent.addRuneListFilter(runeList)
+	(*v).progressionCurrent.AddRuneListFilter(runeList)
 }
 
 func (v *visitor) dot() {
 	v.validateLength()
 	v.clearBuffer()
-	(*v).progressionCurrent.addDotFilter()
+	(*v).progressionCurrent.AddDotFilter()
 }
 
 func (v *visitor) rangeModifier(modifier []byte) {
@@ -197,25 +203,26 @@ func (v *visitor) modifier() {
 		(*v).rangeModifier(modifier)
 	}
 
+	// TODO Split on comma and strconv both sides
 	res, err := strconv.Atoi(string(v.buffer))
 	if err != nil {
 		panic(fmt.Sprintf("could not convert decimal: %v"))
 	}
 
-	(*v).progressionCurrent.addModifier(res)
+	(*v).progressionCurrent.AddModifier(uint(res), uint(res))
 }
 
 func (v *visitor) beginParenthesis() {
-	(*v.progressionCurrent) = (*v).progressionCurrent.group()
+	(*v).progressionCurrent = (*v).progressionCurrent.Group()
 	v.clearBuffer()
 }
 
 func (v *visitor) endParenthesis() {
-	(*v.progressionCurrent) = (*v).progressionCurrent.degroup()
+	(*v).progressionCurrent = (*v).progressionCurrent.Degroup()
 	v.clearBuffer()
 }
 
 func (v *visitor) union() {
-	(*v.progressionCurrent) = (*v).progressionCurrent.union()
+	(*v).progressionCurrent = (*v).progressionCurrent.Union()
 	v.clearBuffer()
 }
