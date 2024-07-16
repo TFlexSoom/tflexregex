@@ -19,6 +19,7 @@ func fromString(pattern string) parsingMonad {
 		length:    len(bytes),
 		index:     0,
 		callstack: make([]func(parsingMonad) parsingMonad, 0, 32),
+		visit:     newVisitor(),
 	}
 }
 
@@ -73,6 +74,7 @@ func (pm *parsingMonadString) acceptByte() {
 		panic("cannot accept on empty monad")
 	}
 
+	(*pm).visit.addToBuffer(pm.content[pm.index])
 	(*pm).index += 1
 }
 
@@ -107,6 +109,14 @@ func (pm *parsingMonadString) acceptUnicode() {
 
 func (pm *parsingMonadString) pump(nt nodeType) {
 	(*pm).visit.pump(nt)
+}
+
+func (pm *parsingMonadString) pumpIfAccepted(nt nodeType) {
+	if !pm.visit.has() {
+		return
+	}
+
+	(*pm).pump(nt)
 }
 
 func (pm *parsingMonadString) ready(nextTerm func(parsingMonad) parsingMonad) {

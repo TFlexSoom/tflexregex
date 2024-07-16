@@ -13,7 +13,7 @@ type visitor struct {
 	buffer             []byte
 }
 
-const maxBuffer = 32
+const maxBuffer = 256
 
 func newVisitor() visitor {
 	p := progression.NewProgression()
@@ -29,9 +29,9 @@ func (v *visitor) addToBuffer(b byte) {
 	(*v).buffer = append((*v).buffer, b)
 }
 
-func (v *visitor) addManyToBuffer(bs []byte) {
-	(*v).buffer = append((*v).buffer, bs...)
-}
+// func (v *visitor) addManyToBuffer(bs []byte) {
+// 	(*v).buffer = append((*v).buffer, bs...)
+// }
 
 func (v *visitor) pump(nt nodeType) {
 	switch nt {
@@ -39,42 +39,35 @@ func (v *visitor) pump(nt nodeType) {
 		panic("node type none passed to visit")
 	case NODE_TYPE_ANCHOR:
 		v.anchor()
-		break
 	case NODE_TYPE_DOLLAR:
 		v.dollar()
-		break
 	case NODE_TYPE_CHAR:
 		v.char()
-		break
 	case NODE_TYPE_UNICODE:
 		v.unicode()
-		break
 	case NODE_TYPE_CLASS:
 		v.class()
-		break
 	case NODE_TYPE_DOT:
 		v.dot()
-		break
 	case NODE_TYPE_MODIFIER:
 		v.modifier()
-		break
 	case NODE_TYPE_PAR_BEGIN:
 		v.beginParenthesis()
-		break
 	case NODE_TYPE_PAR_END:
 		v.endParenthesis()
-		break
 	case NODE_TYPE_UNION:
 		v.union()
-		break
 	default:
 		panic("unknown node type passed to visit (possibly unimplemented)")
 	}
+}
 
+func (v visitor) has() bool {
+	return len(v.buffer) != 0
 }
 
 func (v visitor) validateLength() {
-	if len(v.buffer) == 0 {
+	if !v.has() {
 		panic("empty buffer")
 	}
 }
@@ -85,7 +78,7 @@ func (v *visitor) clearBuffer() {
 
 func (v *visitor) dropNext(next byte) {
 	if v.buffer[0] != next {
-		panic("worng character in buffer")
+		panic("wrong character in buffer")
 	}
 
 	v.clearBuffer()
@@ -110,6 +103,7 @@ func (v *visitor) char() {
 }
 
 func (v *visitor) unicode() {
+	v.validateLength()
 	currentIndex := 0
 	current := v.buffer[currentIndex]
 	r := int32(0)
@@ -204,9 +198,10 @@ func (v *visitor) modifier() {
 	}
 
 	// TODO Split on comma and strconv both sides
-	res, err := strconv.Atoi(string(v.buffer))
+	stringified := string(v.buffer)
+	res, err := strconv.Atoi(stringified)
 	if err != nil {
-		panic(fmt.Sprintf("could not convert decimal: %v"))
+		panic(fmt.Sprintf("could not convert decimal: %s | err: %v", stringified, err))
 	}
 
 	(*v).progressionCurrent.AddModifier(uint(res), uint(res))

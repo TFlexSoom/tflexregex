@@ -35,6 +35,7 @@ type parsingMonad interface {
 
 	// Buffer
 	pump(nodeType)
+	pumpIfAccepted(nodeType)
 
 	// Callstack
 	ready(func(parsingMonad) parsingMonad)
