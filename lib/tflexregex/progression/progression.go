@@ -13,9 +13,3 @@ type Progression interface {
 	Degroup() Progression
 	Union() Progression
 }
-
-func NewProgression() Progression {
-	return nil
-}
-
-// TODO IMPLEMENT
