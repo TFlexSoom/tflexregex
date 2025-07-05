@@ -17,44 +17,78 @@ DOT => '.'
 ESCAPE_LITERAL => '\'
 */
 
-func parseRegex(pMonad parsingMonad) parsingMonad {
-	pMonad.acceptIfHas('^')
-	pMonad.ready(func(pm parsingMonad) parsingMonad {
-		pm.acceptIfHas('$')
-		return pm
-	})
-	pMonad.ready(expression)
+// REGEX => '^'? EXPRESSION? '$'?
+func descentRegex(pMonad monad) monad {
+	if pMonad.has('^') {
+		pMonad.skipByte('^')
+		pMonad.pump(func(v visitor, bs []byte) visitor {
+			return v.anchor()
+		})
+	}
+
+	pMonad.ready(optionalDollar)
+	pMonad.ready(optionalExpression)
 
 	return pMonad
 }
 
-func expression(pMonad parsingMonad) parsingMonad {
+func optionalExpression(pMonad monad) monad {
 	if pMonad.isEmpty() || pMonad.has('$') {
 		return pMonad
 	}
 
-	pMonad.ready(postExpression)
+	pMonad.ready(expression)
+	return pMonad
+}
+
+func optionalDollar(pMonad monad) monad {
+	if pMonad.has('$') {
+		pMonad.skipByte('$')
+		pMonad.pump(func(v visitor, bs []byte) visitor {
+			return v.dollar()
+		})
+	}
+	return pMonad
+}
+
+// EXPRESSION => MODIFIED_TERM + ('|' EXPRESSION )*
+func expression(pMonad monad) monad {
+	if pMonad.isEmpty() {
+		panic("parsing error no modified terms")
+	}
+
+	pMonad.ready(starExpression)
 	pMonad.ready(modifiedTerm)
 	return pMonad
 }
 
-func postExpression(pMonad parsingMonad) parsingMonad {
+func starExpression(pMonad monad) monad {
 	if pMonad.has('|') {
-		pMonad.accept('|')
+		pMonad.skipByte('|')
+		pMonad.pump(func(v visitor, bs []byte) visitor {
+			return v.union()
+		})
 		pMonad.ready(expression)
 	} else if !pMonad.isEmpty() && !pMonad.has('$') {
-		pMonad.ready(postExpression)
+		pMonad.ready(starExpression)
 		pMonad.ready(modifiedTerm)
 	}
 
 	return pMonad
 }
 
-func modifiedTerm(pMonad parsingMonad) parsingMonad {
+// MODIFIED_TERM => ('(' EXPRESSION ')' MODIFIER?) | (TERM MODIFIER?)
+func modifiedTerm(pMonad monad) monad {
 	if pMonad.has('(') {
-		pMonad.accept('(')
-		pMonad.ready(func(pm parsingMonad) parsingMonad {
-			pm.accept(')')
+		pMonad.skipByte('(')
+		pMonad.pump(func(v visitor, bs []byte) visitor {
+			return v.openParenthesis()
+		})
+		pMonad.ready(func(pm monad) monad {
+			pm.skipByte(')')
+			pm.pump(func(v visitor, bs []byte) visitor {
+				return v.closeParenthesis()
+			})
 			return pm
 		})
 		pMonad.ready(expression)
@@ -67,19 +101,35 @@ func modifiedTerm(pMonad parsingMonad) parsingMonad {
 	return pMonad
 }
 
-func term(pMonad parsingMonad) parsingMonad {
+func optionalModifier(pMonad monad) monad {
+	if !pMonad.has('{') && !pMonad.has('+') && !pMonad.has('*') {
+		return pMonad
+	}
+
+	pMonad.ready(modifier)
+	return pMonad
+}
+
+// TERM => ESCAPE | CLASS | DOT | LITERAL
+func term(pMonad monad) monad {
 	if pMonad.has('\\') {
-		pMonad.accept('\\')
-		pMonad.acceptByte()
+		pMonad.skipByte('\\')
+		pMonad.acceptWithin(byte(0), byte(255))
+		pMonad.pump(func(v visitor, bs []byte) visitor {
+			return v.char(bs[0])
+		})
 	} else if pMonad.has('[') {
-		pMonad.ready(func(pm parsingMonad) parsingMonad {
-			pm.accept(']')
+		pMonad.ready(func(pm monad) monad {
+			pm.skipByte(']')
 			return pm
 		})
 		pMonad.ready(class)
 
 	} else if pMonad.has('.') {
-		pMonad.accept('.')
+		pMonad.skipByte('.')
+		pMonad.pump(func(v visitor, bs []byte) visitor {
+			return v.dot()
+		})
 	} else {
 		pMonad.ready(literal)
 	}
@@ -87,25 +137,37 @@ func term(pMonad parsingMonad) parsingMonad {
 	return pMonad
 }
 
-// optionally added
-func modifier(pMonad parsingMonad) parsingMonad {
+// MODIFIER => {DECIMAL,DECIMAL} | {DECIMAL,} | {,DECIMAL} | '+' | '*'
+func modifier(pMonad monad) monad {
 	if pMonad.has('{') {
 		pMonad.ready(rangeModifier)
+		return pMonad
 	} else if pMonad.has('+') {
-		pMonad.accept('+')
+		pMonad.skipByte('+')
+		pMonad.pump(func(v visitor, bs []byte) visitor {
+			return v.modifier(1, 0)
+		})
+		return pMonad
 	} else if pMonad.has('*') {
-		pMonad.accept('*')
+		pMonad.skipByte('*')
+		pMonad.pump(func(v visitor, bs []byte) visitor {
+			return v.modifier(0, 0)
+		})
+		return pMonad
 	}
 
-	return pMonad
+	panic("modifier expected but not found")
 }
 
-func rangeModifier(pMonad parsingMonad) parsingMonad {
-	pMonad.accept('{')
+func rangeModifier(pMonad monad) monad {
+	pMonad.skipByte('{')
 	if pMonad.has(',') {
-		pMonad.accept(',')
-		pMonad.ready(func(pm parsingMonad) parsingMonad {
-			pm.accept('}')
+		pMonad.skipByte(',')
+		pMonad.ready(func(pm monad) monad {
+			pMonad.pump(func(v visitor, bs []byte) visitor {
+				return v.modifier(0, uint(atoi(bs)))
+			})
+			pm.skipByte('}')
 			return pm
 		})
 		pMonad.ready(decimal)
@@ -113,13 +175,20 @@ func rangeModifier(pMonad parsingMonad) parsingMonad {
 		return pMonad
 	}
 
-	pMonad.ready(func(pm parsingMonad) parsingMonad {
-		pm.accept(',')
+	pMonad.ready(func(pm monad) monad {
+		pm.skipByte(',')
 		if pm.has('}') {
-			pm.accept('}')
+			pm.pump(func(v visitor, bs []byte) visitor {
+				return v.modifier(uint(atoi(bs)), 0)
+			})
+			pm.skipByte('}')
 		} else {
-			pm.ready(func(pm_ parsingMonad) parsingMonad {
-				pm_.accept('}')
+			lower := uint(atoi(pm.grab()))
+			pm.ready(func(pm_ monad) monad {
+				pm_.pump(func(v visitor, bs []byte) visitor {
+					return v.modifier(lower, uint(atoi(bs)))
+				})
+				pm_.skipByte('}')
 				return pm_
 			})
 			pm.ready(decimal)
@@ -132,26 +201,50 @@ func rangeModifier(pMonad parsingMonad) parsingMonad {
 	return pMonad
 }
 
-func class(pMonad parsingMonad) parsingMonad {
+// CLASS => '[' [^]]* ']'
+func class(pMonad monad) monad {
+	pMonad.skipByte('[')
 	for !pMonad.has(']') {
 		pMonad.acceptUnicode()
+		pMonad.pump(func(v visitor, bs []byte) visitor {
+			return v.unicode(utf8(bs))
+		})
 	}
 
 	return pMonad
 }
 
-func decimal(pMonad parsingMonad) parsingMonad {
+// DECIMAL => 123456789+
+func decimal(pMonad monad) monad {
 	pMonad.acceptWithin('1', '9')
 
 	for pMonad.within('0', '9') {
-		pMonad.acceptWithin('1', '9')
+		pMonad.acceptWithin('0', '9')
 	}
 
 	return pMonad
 }
 
-func literal(pMonad parsingMonad) parsingMonad {
+// LITERAL => [^()'\'+*{}[\].]
+func literal(pMonad monad) monad {
+	if pMonad.has('^') ||
+		pMonad.has('(') ||
+		pMonad.has(')') ||
+		pMonad.has('\\') ||
+		pMonad.has('+') ||
+		pMonad.has('*') ||
+		pMonad.has('{') ||
+		pMonad.has('}') ||
+		pMonad.has('[') ||
+		pMonad.has(']') ||
+		pMonad.has('.') {
+		panic("bad literal term")
+	}
+
 	pMonad.acceptUnicode()
+	pMonad.pump(func(v visitor, bs []byte) visitor {
+		return v.unicode(utf8(bs))
+	})
 
 	return pMonad
 }

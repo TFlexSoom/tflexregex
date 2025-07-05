@@ -2,10 +2,7 @@ package parse
 
 type Regex struct{}
 
-func Parse(pattern string) Regex {
-	monad := fromString(pattern)
-
-	monad = runUntilDone(monad)
-
-	return Regex{}
+func Parse(pattern string, v visitor) error {
+	monad := from(pattern, v)
+	return runUntilDone(monad)
 }

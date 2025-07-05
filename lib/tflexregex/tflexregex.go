@@ -1,22 +1,25 @@
 package tflexregex
 
-import "github.com/tflexsoom/tflexregex/lib/tflexregex/parse"
-
-type Regex parse.Regex
+import (
+	"github.com/tflexsoom/tflexregex/lib/tflexregex/parse"
+	"github.com/tflexsoom/tflexregex/lib/tflexregex/regex"
+)
 
 func Matches(pattern string, b []byte) (bool, error) {
-	return false, nil
+	regex, err := RegexFromString(pattern)
+	if err != nil {
+		return false, err
+	}
+
+	return regex.Matches(b), nil
 }
 
-func (regex *Regex) Matches(b []byte) bool {
-	return false
-}
+func RegexFromString(pattern string) (regex.Regex, error) {
+	v := parse.NewIrVisitor()
+	err := parse.Parse(pattern, v)
+	if err != nil {
+		return nil, err
+	}
 
-func RegexFromString(pattern string) (Regex, error) {
-	regex := parse.Parse(pattern)
-	return Regex(regex), nil
-}
-
-func NewRegex() Regex {
-	return Regex{}
+	return regex.NFAFromSingle(v.Ir()), nil
 }
