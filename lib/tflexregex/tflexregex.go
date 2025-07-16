@@ -21,5 +21,5 @@ func RegexFromString(pattern string) (regex.Regex, error) {
 		return nil, err
 	}
 
-	return regex.NFAFromSingle(v.Ir()), nil
+	return regex.RecursiveTreeFromSingle(v.Ir()), nil
 }
